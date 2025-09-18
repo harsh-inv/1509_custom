@@ -1727,55 +1727,35 @@ async def get_available_tables():
         logger.error(f"Error fetching tables: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching tables: {str(e)}")
 
-@app.post("/run-checks-table/{table_name}", response_model=ApiResponse)
-async def run_checks_for_table(table_name: str):
-    """Execute data quality checks for a specific selected table - UI5 Integration"""
+@app.post("/run-all-checks", response_model=ApiResponse)
+async def run_all_checks():
+    """Execute data quality checks for ALL tables - UI5 Integration"""
     global data_quality_checker
     
     if not data_quality_checker:
         raise HTTPException(status_code=500, detail="Data quality checker not initialized")
     
-    # Validate table exists
-    if not data_quality_checker.table_exists(table_name):
-        available_tables = list(data_quality_checker.checks_config.keys())
-        raise HTTPException(
-            status_code=404, 
-            detail=f"Table '{table_name}' not found. Available tables: {available_tables}"
-        )
-    
-    start_time = datetime.now()
-    
     try:
-        # Check if table has validation configuration
-        table_config = data_quality_checker.checks_config.get(table_name)
-        if not table_config:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"No validation configuration found for table '{table_name}'"
-            )
+        start_time = datetime.now()
         
-        # Run checks only for the specified table
-        table_results = []
-        for field_name, checks in table_config.items():
-            field_results = data_quality_checker.run_field_checks(table_name, field_name, checks)
-            if field_results:
-                table_results.extend(field_results)
+        # Run checks for all configured tables
+        results = data_quality_checker.run_all_checks()
         
-        results = {}
-        if table_results:
-            results[table_name] = table_results
+        # Calculate overall summary statistics
+        all_results = []
+        for table_name, table_results in results.items():
+            all_results.extend(table_results)
         
-        # Calculate summary statistics
-        total_checks = len(table_results)
-        passed_checks = len([r for r in table_results if r["status"] == "PASS"])
-        failed_checks = len([r for r in table_results if r["status"] == "FAIL"])
-        warnings = len([r for r in table_results if r["status"] == "WARNING"])
-        errors = len([r for r in table_results if r["status"] == "ERROR"])
-        info_checks = len([r for r in table_results if r["status"] == "INFO"])
+        total_checks = len(all_results)
+        passed_checks = len([r for r in all_results if r["status"] == "PASS"])
+        failed_checks = len([r for r in all_results if r["status"] == "FAIL"])
+        warnings = len([r for r in all_results if r["status"] == "WARNING"])
+        errors = len([r for r in all_results if r["status"] == "ERROR"])
+        info_checks = len([r for r in all_results if r["status"] == "INFO"])
         
-        # Count by severity for UI5 prioritization
-        critical_issues = len([r for r in table_results if r.get("severity") in ["ERROR", "HIGH"]])
-        medium_issues = len([r for r in table_results if r.get("severity") == "MEDIUM"])
+        # Count by severity
+        critical_issues = len([r for r in all_results if r.get("severity") in ["ERROR", "HIGH"]])
+        medium_issues = len([r for r in all_results if r.get("severity") == "MEDIUM"])
         low_issues = total_checks - critical_issues - medium_issues
         
         execution_time = (datetime.now() - start_time).total_seconds() * 1000
@@ -1787,8 +1767,8 @@ async def run_checks_for_table(table_name: str):
             warnings=warnings,
             errors=errors,
             info_checks=info_checks,
-            success_rate=round((passed_checks / total_checks) * 100, 2) if total_checks > 0 else 0,
-            tables_checked=1,
+            success_rate=round((passed_checks / total_checks * 100), 2) if total_checks > 0 else 0,
+            tables_checked=len(results),
             critical_issues=critical_issues,
             medium_issues=medium_issues,
             low_issues=low_issues
@@ -1796,7 +1776,7 @@ async def run_checks_for_table(table_name: str):
         
         return ApiResponse(
             status="SUCCESS",
-            message=f"Data quality checks completed successfully for table '{table_name}'",
+            message=f"Data quality checks completed successfully for {len(results)} tables",
             summary=summary,
             detailed_results=results,
             timestamp=datetime.now().isoformat(),
@@ -1805,7 +1785,7 @@ async def run_checks_for_table(table_name: str):
         )
         
     except Exception as e:
-        logger.error(f"Error running data quality checks for table {table_name}: {str(e)}")
+        logger.error(f"Error running data quality checks: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error running checks: {str(e)}")
 
 @app.get("/table-info/{table_name}")
