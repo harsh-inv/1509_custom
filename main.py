@@ -947,6 +947,7 @@ class DataQualityChecker:
             # NULL CHECK
             # NULL CHECK - Complete implementation
             # NULL CHECK
+            # NULL CHECK
             if checks.get("null_check", False):
                 cursor.execute(f"SELECT COUNT(*) FROM `{table_name}`")
                 total_rows = cursor.fetchone()[0]
@@ -954,23 +955,23 @@ class DataQualityChecker:
                 null_count = cursor.fetchone()[0]
                 
                 if null_count > 0:
-                    # Get the actual NULL records for details
-                    cursor.execute(f"SELECT `{primary_key}`, `{field_name}` FROM `{table_name}` WHERE `{field_name}` IS NULL")
+                    # Get the primary keys of records with NULL values
+                    cursor.execute(f"SELECT `{primary_key}` FROM `{table_name}` WHERE `{field_name}` IS NULL")
                     null_records = cursor.fetchall()
                     
+                    # Create summary message
+                    summary_message = f"Found {null_count} NULL values out of {total_rows} total rows"
+                    
                     # Create JSON array format for more_details
+                    primary_key_display = format_field_name(primary_key)
+                    field_display = format_field_name(field_name)
+                    
                     null_details_array = []
                     for record in null_records:
-                        primary_key_display = format_field_name(primary_key)
-                        field_display = format_field_name(field_name)
-                        
                         null_details_array.append({
                             primary_key_display: record[0],
                             field_display: "NULL"
                         })
-                    
-                    # Create summary message
-                    summary_message = f"Found {null_count} NULL values out of {total_rows} total rows"
                     
                     # Add FAIL result with JSON array in more_details
                     results.append({
@@ -989,7 +990,7 @@ class DataQualityChecker:
                         "field": field_name,
                         "check_type": "null_check",
                         "status": "PASS",
-                        "message": f"No NULL values found in {total_rows} rows",
+                        "message": f"No NULL values found in {total_rows} records",
                         "more_details": None,
                         "severity": "INFO"
                     })
